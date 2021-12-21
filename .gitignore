@@ -1,0 +1,11 @@
+__pycache__
+venv/
+.env
+.DS_Store
+**/.DS_Store
+.vscode
+.idea
+__pycache__/
+.pytest_cache
+*.py[cod]
+.waypoint
