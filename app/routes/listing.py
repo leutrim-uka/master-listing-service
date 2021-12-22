@@ -26,12 +26,6 @@ async def background_listing_request(listing_request: ListingRequest, listing_id
 
     # CHECK IF MARKETPLACE EXISTS AND IS ENABLED
     listing["marketplace"] = listing["marketplace"].lower()
-    marketplace_exists = await db["marketplaces"].find({"identifier": listing["marketplace"], "enabled": True}).to_list(1)
-
-    if not marketplace_exists:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=f"Marketplace not found"
-        )
 
     try:
         new_listing = await db["listings"].insert_one(listing)
@@ -41,6 +35,14 @@ async def background_listing_request(listing_request: ListingRequest, listing_id
         message = f"Error while storing listing request: {e}"
         await db["listings"].update_one({"listing_id": listing_id}, {"$set": {"status": "FAILED"}})
         await log_event(db, listing_id, message)
+
+    marketplace_exists = await db["marketplaces"].find({"identifier": listing["marketplace"], "enabled": True}).to_list(1)
+    if not marketplace_exists:
+        await log_event(db, listing_id, "ERROR: No such marketplace")
+        await db["listings"].update_one({"listing_id": listing_id}, {"$set": {"status": "FAILED"}})
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Marketplace not found"
+        )
 
     try:
         await log_event(db, listing_id, "Sent for mapping")
