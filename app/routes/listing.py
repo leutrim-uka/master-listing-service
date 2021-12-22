@@ -6,7 +6,7 @@ import requests
 
 from models.listing import ListingRequest, ResponseModel
 from database import db
-from utils import generate_listing_id, calculate_page_data, generate_pages_links, log_event
+from utils import generate_listing_id, calculate_page_data, generate_pages_links, log_event, does_marketplace_exist
 
 router = APIRouter()
 
@@ -15,14 +15,23 @@ router = APIRouter()
 def add_listing_request(listing_request: ListingRequest, background_tasks: BackgroundTasks):
     listing_id = generate_listing_id()
 
-    background_tasks.add_task(manage_listing_request, listing_request, listing_id)
+    background_tasks.add_task(background_listing_request, listing_request, listing_id)
 
-    return f"Listing request with ID {listing_id} is now processing!"
+    return f"Listing request with ID {listing_id} is processing!"
 
 
-async def manage_listing_request(listing_request: ListingRequest, listing_id: str):
+async def background_listing_request(listing_request: ListingRequest, listing_id: str):
     listing = jsonable_encoder(listing_request)
     listing["listing_id"] = listing_id
+
+    # CHECK IF MARKETPLACE EXISTS AND IS ENABLED
+    listing["marketplace"] = listing["marketplace"].lower()
+    marketplace_exists = await db["marketplaces"].find({"identifier": listing["marketplace"], "enabled": True}).to_list(1)
+
+    if not marketplace_exists:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Marketplace not found"
+        )
 
     try:
         new_listing = await db["listings"].insert_one(listing)
@@ -30,6 +39,7 @@ async def manage_listing_request(listing_request: ListingRequest, listing_id: st
         await log_event(db, listing_id, "Listing request stored into database")
     except Exception as e:
         message = f"Error while storing listing request: {e}"
+        await db["listings"].update_one({"listing_id": listing_id}, {"$set": {"status": "FAILED"}})
         await log_event(db, listing_id, message)
 
     try:
@@ -39,12 +49,13 @@ async def manage_listing_request(listing_request: ListingRequest, listing_id: st
         )
     except Exception as e:
         message = f"Error: Mapping request couldn't be sent: {e}"
+        await db["listings"].update_one({"listing_id": listing_id}, {"$set": {"status": "FAILED"}})
         await log_event(db, listing_id, message)
         return message
 
 
 @router.get("/marketplaces")
-async def get_listing_request():
+async def get_marketplaces():
     marketplaces = await db["marketplaces"].find({}, {"_id": 0}).to_list(5)
 
     if not marketplaces:
@@ -57,7 +68,7 @@ async def get_listing_request():
 
 @router.get("/{listing_id}", response_description="List all listing requests")
 async def get_listing_request(listing_id: str):
-    listing_request = await db["listings"].find({"listing_id": listing_id}, {"_id": 0, "credentials": 0}).to_list(10)
+    listing_request = await db["listings"].find({"listing_id": listing_id}, {"_id": 0}).to_list(10)
 
     if listing_request:
         return ResponseModel(listing_request, "Listing retrieved successfully!")
@@ -101,7 +112,48 @@ async def get_all_listing_requests(
 
 
 @router.delete("/{listing_id}", response_description="Delete a listing request")
-async def delete_listing(listing_id: str):
+async def delete_listing(listing_id: str, background_tasks: BackgroundTasks):
 
-    # IMPLEMENT DELETE METHOD
-    pass
+    listing_request = await db["listings"].find({"listing_id": listing_id, "deleted": True}).to_list(1)
+
+    if listing_request:
+        raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Listing {listing_id} was not found!",
+                )
+
+    background_tasks.add_task(background_delete_listing, listing_id)
+
+    return f"Listing {listing_id} will be deleted!"
+
+
+async def background_delete_listing(listing_id):
+
+    try:
+        requests.delete(
+            f"http://127.0.0.1:8008/{listing_id}",
+        )
+    except Exception as e:
+        message = f"Error: Deletion unsuccessful: {e}"
+        await log_event(db, listing_id, message)
+        return message
+
+
+@router.delete("/{listing_id}/{item_id}", response_description="Delete a listing request")
+async def delete_item(listing_id, item_id):
+    item = await db["listings"].find({"listing_id": listing_id, "items.item_id": item_id}, {"items.partner_id": 1}).to_list(1)
+
+    if not item:
+        raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Item was not found!",
+                )
+
+    try:
+        requests.delete(
+            f"http://127.0.0.1:8008/{listing_id}/{item_id}",
+        )
+    except Exception as e:
+        message = f"Error: Item deletion unsuccessful: {e}"
+        await log_event(db, listing_id, message)
+        return message

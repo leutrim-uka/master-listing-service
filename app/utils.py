@@ -71,3 +71,11 @@ async def log_event(db, listing_id, message):
     await db["listings"].update_one({"listing_id": listing_id}, {"$push": {"events": message}})
     return "Event logged"
 
+
+async def does_marketplace_exist(db, marketplace):
+    marketplace_query = await db["marketplaces"].find({"identifier": marketplace, "enabled": True}).to_list(1)
+
+    if not marketplace_query:
+        return False
+
+    return True

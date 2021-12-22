@@ -29,7 +29,7 @@ class Inventory(BaseModel):
     brand: str = Field(...)
     gender: str = Field(...)
     description: str = Field(...)
-    price: str = Field(...)
+    price: float = Field(...)
     size: str = Field(...)
     title: str = Field(...)
     color: str = Field(...)
@@ -39,7 +39,7 @@ class Inventory(BaseModel):
 class ListingRequest(BaseModel):
     id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
     status: str = "PENDING"
-    margin: float = Field(...)
+    margin: Optional[float]
     marketplace: str = Field(...)
     deleted: bool = False
     credentials: User = Field(...)
