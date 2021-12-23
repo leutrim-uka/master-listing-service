@@ -1,8 +1,9 @@
 import motor.motor_asyncio
 import os
+from dotenv import load_dotenv
 
-MONGO_DETAILS = "mongodb://localhost:27017"
+load_dotenv()
 
-client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_DETAILS)
+client = motor.motor_asyncio.AsyncIOMotorClient(f"{os.getenv('MONGO_URI')}")
 
 db = client.listing_service

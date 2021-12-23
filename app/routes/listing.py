@@ -1,3 +1,5 @@
+import os
+
 from fastapi import APIRouter, status, HTTPException, Request, Query, BackgroundTasks
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
@@ -47,7 +49,7 @@ async def background_listing_request(listing_request: ListingRequest, listing_id
     try:
         await log_event(db, listing_id, "Sent for mapping")
         requests.post(
-            f"http://127.0.0.1:8007/{listing_id}",
+            f"{os.getenv('MAPPING_SERVICE_URL')}/{listing_id}",
         )
     except Exception as e:
         message = f"Error: Mapping request couldn't be sent: {e}"
@@ -133,7 +135,7 @@ async def background_delete_listing(listing_id):
 
     try:
         requests.delete(
-            f"http://127.0.0.1:8008/{listing_id}",
+            f"{os.getenv('LISTING_SERVICE_URL')}/{listing_id}",
         )
     except Exception as e:
         message = f"Error: Deletion unsuccessful: {e}"
@@ -153,7 +155,7 @@ async def delete_item(listing_id, item_id):
 
     try:
         requests.delete(
-            f"http://127.0.0.1:8008/{listing_id}/{item_id}",
+            f"{os.getenv('LISTING_SERVICE_URL')}/{listing_id}/{item_id}",
         )
     except Exception as e:
         message = f"Error: Item deletion unsuccessful: {e}"
